@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>D&D: Sistema Multijugador Dinámico</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Georgia', serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        @media (min-width: 768px) {
+            body {
+                padding: 20px;
+            }
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #ffd700;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #b8b8b8;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
+
+        .session-info {
+            text-align: center;
+            background: rgba(255, 215, 0, 0.1);
+            border: 2px solid #ffd700;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .session-id {
+            font-size: 1.2em;
+            color: #ffd700;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .connected-players {
+            color: #b8b8b8;
+            font-size: 0.9em;
+        }
+
+        .connection-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #27ae60;
+            margin-right: 5px;
+            animation: pulse 2s infinite;
+        }
+
+        .connection-status.disconnected {
+            background: #e74c3c;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Panel de Creación de Jugadores */
+        .player-creator {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #9b59b6;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .creator-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .creator-title {
+            font-size: 1.5em;
+            color: #9b59b6;
+            font-weight: bold;
+        }
+
+        .toggle-creator-btn {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-creator-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .creator-form {
+            display: none;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .creator-form.active {
+            display: grid;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            color: #ffd700;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .form-group input, .form-group select {
+            padding: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #9b59b6;
+        }
+
+        .create-player-btn {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #27ae60, #229954);
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1em;
+        }
+
+        .create-player-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .game-layout {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .character-sheet {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #ffd700;
+            border-radius: 15px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            position: relative;
+        }
+
+        .delete-character-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .character-sheet.custom .delete-character-btn {
+            display: flex;
+        }
+
+        .delete-character-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .character-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(255, 215, 0, 0.3);
+        }
+
+        .character-name {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .character-class {
+            color: #b8b8b8;
+            font-size: 0.85em;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.75em;
+            color: #b8b8b8;
+            margin-bottom: 3px;
+        }
+
+        .stat-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #ffd700;
+        }
+
+        .hp-bar {
+            margin-bottom: 15px;
+        }
+
+        .hp-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.85em;
+        }
+
+        .hp-progress {
+            width: 100%;
+            height: 22px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 11px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .hp-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #e74c3c, #c0392b);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.85em;
+        }
+
+        .resource-bar .hp-fill {
+            background: linear-gradient(90deg, #3498db, #2980b9);
+        }
+
+        .abilities {
+            margin-bottom: 15px;
+        }
+
+        .ability-title {
+            font-size: 1.1em;
+            color: #ffd700;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .ability-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .ability-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #ffd700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .ability-item:hover {
+            background: rgba(255, 215, 0, 0.1);
+            transform: translateX(5px);
+        }
+
+        .ability-name {
+            font-weight: bold;
+            margin-bottom: 2px;
+            font-size: 0.9em;
+        }
+
+        .ability-desc {
+            font-size: 0.8em;
+            color: #b8b8b8;
+        }
+
+        .inventory {
+            margin-bottom: 15px;
+        }
+
+        .inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+
+        .item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            text-align: center;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        .combat-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .control-btn {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.85em;
+        }
+
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .control-btn.heal {
+            background: linear-gradient(135deg, #27ae60, #229954);
+        }
+
+        .control-btn.resource {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+        }
+
+        .control-btn.reset {
+            background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .value-input {
+            width: 50px;
+            padding: 6px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            color: #ffd700;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .dice-roller {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #ffd700;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .dice-buttons {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+        }
+
+        .dice-btn {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            border: none;
+            padding: 15px 10px;
+            border-radius: 10px;
+            color: #1a1a2e;
+            font-weight: bold;
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            min-width: 0;
+        }
+
+        .dice-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+
+        .dice-btn:active {
+            transform: translateY(0);
+        }
+
+        .dice-result {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .result-text {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ffd700;
+        }
+
+        .result-detail {
+            font-size: 0.9em;
+            color: #b8b8b8;
+            margin-top: 5px;
+        }
+
+        .narrative-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #8e44ad;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .narrative-title {
+            font-size: 1.5em;
+            color: #ffd700;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .narrative-entry {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #8e44ad;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .narrative-entry.dm {
+            border-left-color: #ffd700;
+        }
+
+        .narrative-entry.action {
+            border-left-color: #e74c3c;
+        }
+
+        .narrative-entry.dice {
+            border-left-color: #3498db;
+        }
+
+        .entry-label {
+            font-weight: bold;
+            color: #ffd700;
+            margin-bottom: 5px;
+        }
+
+        .rolling {
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-5deg); }
+            75% { transform: rotate(5deg); }
+        }
+
+        .sync-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(46, 204, 113, 0.9);
+            color: white;
+            border-radius: 8px;
+            font-weight: bold;
+            display: none;
+            animation: fadeInOut 2s;
+            z-index: 1000;
+        }
+
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+
+        .color-options {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+
+        .color-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+
+        .color-option.selected {
+            border-color: #ffd700;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .creator-form {
+                grid-template-columns: 1fr;
+            }
+            
+            .game-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .dice-buttons {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 8px;
+            }
+
+            .dice-btn {
+                padding: 12px 8px;
+                font-size: 1em;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .subtitle {
+                font-size: 0.9em;
+            }
+
+            .combat-controls {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 6px;
+            }
+
+            .narrative-box {
+                max-height: 300px;
+            }
+
+            .value-input {
+                width: 45px;
+                font-size: 0.85em;
+            }
+
+            .control-btn {
+                font-size: 0.8em;
+                padding: 8px;
+            }
+
+            .character-sheet {
+                padding: 12px;
+            }
+
+            .dice-roller {
+                padding: 15px;
+            }
+
+            .dice-result {
+                min-height: 60px;
+                padding: 15px;
+            }
+
+            .result-text {
+                font-size: 1.5em;
+            }
+        }
+
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .dice-buttons {
+                grid-template-columns: repeat(6, 1fr);
+                gap: 8px;
+            }
+
+            .dice-btn {
+                padding: 12px 8px;
+                font-size: 1em;
+            }
+
+            .game-layout {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .creator-form {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (min-width: 1025px) and (max-width: 1400px) {
+            .game-layout {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .dice-buttons {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 6px;
+            }
+
+            .dice-btn {
+                padding: 10px 6px;
+                font-size: 0.9em;
+            }
+
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .session-info {
+                padding: 10px;
+            }
+
+            .player-creator {
+                padding: 15px;
+            }
+
+            .creator-title {
+                font-size: 1.2em;
+            }
+
+            .toggle-creator-btn {
+                padding: 8px 12px;
+                font-size: 0.85em;
+            }
+
+            .inventory-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-group input,
+            .form-group select {
+                font-size: 0.85em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="sync-indicator" id="syncIndicator">✓ Sincronizado</div>
+    
+    <div class="container">
+        <h1>🎲 Sistema D&D Multijugador 🎲</h1>
+        <p class="subtitle">Crea y gestiona personajes dinámicamente</p>
+
+        <div class="session-info">
+            <div class="session-id">
+                <span class="connection-status" id="connectionStatus"></span>
+                Servidor Node.js + Socket.io
+            </div>
+            <div class="connected-players">
+                <span id="playerCount">0</span> jugadores conectados
+            </div>
+        </div>
+
+        <!-- PANEL DE CREACIÓN DE JUGADORES -->
+        <div class="player-creator">
+            <div class="creator-header">
+                <div class="creator-title">⚔️ Crear Nuevo Jugador</div>
+                <button class="toggle-creator-btn" onclick="toggleCreator()">
+                    <span id="toggleText">Mostrar Panel</span>
+                </button>
+            </div>
+            
+            <div class="creator-form" id="creatorForm">
+                <div class="form-group">
+                    <label>Nombre del Personaje *</label>
+                    <input type="text" id="newCharName" placeholder="Ej: Legolas">
+                </div>
+                
+                <div class="form-group">
+                    <label>Clase *</label>
+                    <input type="text" id="newCharClass" placeholder="Ej: Arquero Élfico">
+                </div>
+                
+                <div class="form-group">
+                    <label>Nivel</label>
+                    <input type="number" id="newCharLevel" value="10" min="1" max="20">
+                </div>
+                
+                <div class="form-group">
+                    <label>HP Máximo *</label>
+                    <input type="number" id="newCharMaxHP" value="100" min="1">
+                </div>
+                
+                <div class="form-group">
+                    <label>Tipo de Recurso</label>
+                    <select id="newCharResourceType">
+                        <option value="none">Ninguno</option>
+                        <option value="ki">Ki</option>
+                        <option value="mana">Maná</option>
+                        <option value="energy">Energía</option>
+                        <option value="rage">Furia</option>
+                        <option value="focus">Concentración</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Recurso Máximo</label>
+                    <input type="number" id="newCharMaxResource" value="20" min="0">
+                </div>
+                
+                <div class="form-group">
+                    <label>FUE</label>
+                    <input type="number" id="newCharSTR" value="10" min="1" max="20">
+                </div>
+                
+                <div class="form-group">
+                    <label>DES</label>
+                    <input type="number" id="newCharDEX" value="10" min="1" max="20">
+                </div>
+                
+                <div class="form-group">
+                    <label>CON</label>
+                    <input type="number" id="newCharCON" value="10" min="1" max="20">
+                </div>
+                
+                <div class="form-group">
+                    <label>INT</label>
+                    <input type="number" id="newCharINT" value="10" min="1" max="20">
+                </div>
+                
+                <div class="form-group">
+                    <label>SAB</label>
+                    <input type="number" id="newCharWIS" value="10" min="1" max="20">
+                </div>
+                
+                <div class="form-group">
+                    <label>CAR</label>
+                    <input type="number" id="newCharCHA" value="10" min="1" max="20">
+                </div>
+
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Color del Personaje</label>
+                    <div class="color-options">
+                        <div class="color-option selected" style="background: #4a90e2;" data-color="#4a90e2"></div>
+                        <div class="color-option" style="background: #ff6b35;" data-color="#ff6b35"></div>
+                        <div class="color-option" style="background: #ff69b4;" data-color="#ff69b4"></div>
+                        <div class="color-option" style="background: #27ae60;" data-color="#27ae60"></div>
+                        <div class="color-option" style="background: #9b59b6;" data-color="#9b59b6"></div>
+                        <div class="color-option" style="background: #e67e22;" data-color="#e67e22"></div>
+                        <div class="color-option" style="background: #3498db;" data-color="#3498db"></div>
+                        <div class="color-option" style="background: #e74c3c;" data-color="#e74c3c"></div>
+                    </div>
+                </div>
+                
+                <button class="create-player-btn" onclick="createNewPlayer()">
+                    ✨ Crear Personaje
+                </button>
+            </div>
+        </div>
+
+        <!-- PERSONAJES -->
+        <div class="game-layout" id="characterContainer">
+            <!-- Los personajes se cargarán aquí dinámicamente -->
+        </div>
+
+        <!-- DICE ROLLER -->
+        <div class="dice-roller">
+            <div class="ability-title">🎲 Tirador de Dados</div>
+            <div class="dice-result" id="dice-result">
+                <div class="result-text">¡Lanza los dados!</div>
+            </div>
+            <div class="dice-buttons">
+                <button class="dice-btn" onclick="rollDice(4)">d4</button>
+                <button class="dice-btn" onclick="rollDice(6)">d6</button>
+                <button class="dice-btn" onclick="rollDice(8)">d8</button>
+                <button class="dice-btn" onclick="rollDice(10)">d10</button>
+                <button class="dice-btn" onclick="rollDice(12)">d12</button>
+                <button class="dice-btn" onclick="rollDice(20)">d20</button>
+            </div>
+        </div>
+
+        <!-- NARRATIVE LOG -->
+        <div class="narrative-box">
+            <div class="narrative-title">📜 Registro de la Aventura</div>
+            <div id="narrative-log"></div>
+            <div style="margin-top: 15px; display: flex; flex-wrap: wrap; gap: 10px;">
+                <input type="text" id="dm-input" placeholder="Escribe una narración..." style="flex: 1; min-width: 200px; padding: 10px; border-radius: 8px; border: 2px solid #ffd700; background: rgba(0,0,0,0.3); color: #e0e0e0;">
+                <button class="control-btn" style="width: 100px;" onclick="addDMNarrative()">Enviar</button>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,215,0,0.1); border-radius: 10px;">
+            <button class="control-btn" style="width: 100%; max-width: 300px; font-size: 1em; padding: 12px;" onclick="resetGame()">🔄 Reiniciar Juego</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let characters = {};
+        let selectedColor = '#4a90e2';
+
+        // Personajes base (plantillas)
+        const baseCharacters = {
+            heimer: {
+                name: 'Heimerdinger',
+                class: 'Artífice/Inventor',
+                level: 10,
+                emoji: '🔧',
+                hp: 75,
+                maxHp: 75,
+                resourceType: 'none',
+                resource: 0,
+                maxResource: 0,
+                stats: { str: 8, dex: 14, con: 12, int: 20, wis: 16, cha: 13 },
+                color: '#4a90e2',
+                isBase: true
+            },
+            goku: {
+                name: 'Goku',
+                class: 'Monje/Guerrero',
+                level: 10,
+                emoji: '🥋',
+                hp: 120,
+                maxHp: 120,
+                resourceType: 'ki',
+                resource: 15,
+                maxResource: 15,
+                stats: { str: 20, dex: 18, con: 18, int: 10, wis: 14, cha: 12 },
+                color: '#ff6b35',
+                isBase: true
+            },
+            star: {
+                name: 'Star Butterfly',
+                class: 'Hechicera/Princesa',
+                level: 10,
+                emoji: '🦋',
+                hp: 90,
+                maxHp: 90,
+                resourceType: 'mana',
+                resource: 20,
+                maxResource: 20,
+                stats: { str: 12, dex: 16, con: 14, int: 13, wis: 15, cha: 18 },
+                color: '#ff69b4',
+                isBase: true
+            }
+        };
+
+        // Inicializar con personajes base
+        characters = { ...baseCharacters };
+
+        // Socket.io event listeners
+        socket.on('connect', () => {
+            document.getElementById('connectionStatus').classList.remove('disconnected');
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('connectionStatus').classList.add('disconnected');
+        });
+
+        socket.on('initial-state', (gameState) => {
+            if (gameState.characters) {
+                characters = gameState.characters;
+                renderAllCharacters();
+            }
+            
+            if (gameState.narrative) {
+                const log = document.getElementById('narrative-log');
+                log.innerHTML = '';
+                gameState.narrative.forEach(entry => {
+                    addNarrativeToDOM(entry);
+                });
+            }
+        });
+
+        socket.on('players-update', (count) => {
+            document.getElementById('playerCount').textContent = count;
+        });
+
+        socket.on('character-updated', (data) => {
+            characters[data.char] = data.characterData;
+            renderAllCharacters();
+            showSyncIndicator();
+        });
+
+        socket.on('character-added', (data) => {
+            characters[data.charId] = data.characterData;
+            renderAllCharacters();
+            showSyncIndicator();
+        });
+
+        socket.on('character-deleted', (data) => {
+            delete characters[data.charId];
+            renderAllCharacters();
+            showSyncIndicator();
+        });
+
+        socket.on('dice-rolled', (data) => {
+            const resultDiv = document.getElementById('dice-result');
+            resultDiv.innerHTML = `
+                <div class="result-text">${data.result}</div>
+                <div class="result-detail">d${data.sides}</div>
+            `;
+        });
+
+        socket.on('narrative-added', (entry) => {
+            addNarrativeToDOM(entry);
+        });
+
+        socket.on('game-reset', (gameState) => {
+            characters = gameState.characters;
+            renderAllCharacters();
+            location.reload();
+        });
+
+        // Color selector
+        document.querySelectorAll('.color-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
+                selectedColor = this.dataset.color;
+            });
+        });
+
+        function toggleCreator() {
+            const form = document.getElementById('creatorForm');
+            const toggleText = document.getElementById('toggleText');
+            
+            if (form.classList.contains('active')) {
+                form.classList.remove('active');
+                toggleText.textContent = 'Mostrar Panel';
+            } else {
+                form.classList.add('active');
+                toggleText.textContent = 'Ocultar Panel';
+            }
+        }
+
+        function createNewPlayer() {
+            const name = document.getElementById('newCharName').value.trim();
+            const charClass = document.getElementById('newCharClass').value.trim();
+            const level = parseInt(document.getElementById('newCharLevel').value);
+            const maxHp = parseInt(document.getElementById('newCharMaxHP').value);
+            const resourceType = document.getElementById('newCharResourceType').value;
+            const maxResource = parseInt(document.getElementById('newCharMaxResource').value);
+            
+            const stats = {
+                str: parseInt(document.getElementById('newCharSTR').value),
+                dex: parseInt(document.getElementById('newCharDEX').value),
+                con: parseInt(document.getElementById('newCharCON').value),
+                int: parseInt(document.getElementById('newCharINT').value),
+                wis: parseInt(document.getElementById('newCharWIS').value),
+                cha: parseInt(document.getElementById('newCharCHA').value)
+            };
+
+            if (!name || !charClass || !maxHp) {
+                alert('Por favor completa los campos obligatorios (Nombre, Clase, HP Máximo)');
+                return;
+            }
+
+            const charId = 'char_' + Date.now();
+            const newCharacter = {
+                name: name,
+                class: charClass,
+                level: level,
+                emoji: '⚔️',
+                hp: maxHp,
+                maxHp: maxHp,
+                resourceType: resourceType,
+                resource: maxResource,
+                maxResource: maxResource,
+                stats: stats,
+                color: selectedColor,
+                isBase: false
+            };
+
+            characters[charId] = newCharacter;
+            socket.emit('add-character', { charId, characterData: newCharacter });
+            
+            renderAllCharacters();
+            addNarrative(`✨ ¡${name} se ha unido a la aventura!`, 'action');
+            
+            // Limpiar formulario
+            document.getElementById('newCharName').value = '';
+            document.getElementById('newCharClass').value = '';
+            
+            showSyncIndicator();
+        }
+
+        function deleteCharacter(charId) {
+            if (characters[charId].isBase) {
+                alert('No puedes eliminar los personajes base. Solo se pueden eliminar personajes personalizados.');
+                return;
+            }
+
+            if (confirm(`¿Estás seguro de eliminar a ${characters[charId].name}?`)) {
+                const charName = characters[charId].name;
+                delete characters[charId];
+                socket.emit('delete-character', { charId });
+                renderAllCharacters();
+                addNarrative(`👋 ${charName} ha abandonado la aventura.`, 'action');
+            }
+        }
+
+        function renderAllCharacters() {
+            const container = document.getElementById('characterContainer');
+            container.innerHTML = '';
+
+            Object.keys(characters).forEach(charId => {
+                const char = characters[charId];
+                const charDiv = createCharacterSheet(charId, char);
+                container.appendChild(charDiv);
+            });
+        }
+
+        function createCharacterSheet(charId, char) {
+            const div = document.createElement('div');
+            div.className = `character-sheet ${char.isBase ? '' : 'custom'}`;
+            div.style.borderColor = char.color;
+
+            const resourceLabel = {
+                'ki': '🔥 Ki',
+                'mana': '✨ Maná',
+                'energy': '⚡ Energía',
+                'rage': '💢 Furia',
+                'focus': '🎯 Concentración',
+                'none': ''
+            };
+
+            const resourceHTML = char.resourceType !== 'none' ? `
+                <div class="hp-bar resource-bar">
+                    <div class="hp-label">
+                        <span>${resourceLabel[char.resourceType]}</span>
+                        <span id="${charId}-resource-text">${char.resource}/${char.maxResource}</span>
+                    </div>
+                    <div class="hp-progress">
+                        <div class="hp-fill" id="${charId}-resource-bar" style="width: ${(char.resource/char.maxResource)*100}%;">${char.resource}/${char.maxResource}</div>
+                    </div>
+                </div>
+            ` : '';
+
+            const resourceControls = char.resourceType !== 'none' ? `
+                <div class="input-group">
+                    <input type="number" class="value-input" id="${charId}-resource-minus-input" value="1" min="1">
+                    <button class="control-btn resource" onclick="modifyResource('${charId}', -1)">-${resourceLabel[char.resourceType].split(' ')[1]}</button>
+                </div>
+                <div class="input-group">
+                    <input type="number" class="value-input" id="${charId}-resource-plus-input" value="1" min="1">
+                    <button class="control-btn resource" onclick="modifyResource('${charId}', 1)">+${resourceLabel[char.resourceType].split(' ')[1]}</button>
+                </div>
+            ` : '';
+
+            div.innerHTML = `
+                ${!char.isBase ? `<button class="delete-character-btn" onclick="deleteCharacter('${charId}')">×</button>` : ''}
+                
+                <div class="character-header">
+                    <div>
+                        <div class="character-name">${char.name}</div>
+                        <div class="character-class">${char.class} - Nivel ${char.level}</div>
+                    </div>
+                    <div style="font-size: 2.5em;">${char.emoji}</div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">FUE</div>
+                        <div class="stat-value">${char.stats.str}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">DES</div>
+                        <div class="stat-value">${char.stats.dex}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">CON</div>
+                        <div class="stat-value">${char.stats.con}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">INT</div>
+                        <div class="stat-value">${char.stats.int}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">SAB</div>
+                        <div class="stat-value">${char.stats.wis}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">CAR</div>
+                        <div class="stat-value">${char.stats.cha}</div>
+                    </div>
+                </div>
+
+                <div class="hp-bar">
+                    <div class="hp-label">
+                        <span>Puntos de Vida</span>
+                        <span id="${charId}-hp-text">${char.hp}/${char.maxHp}</span>
+                    </div>
+                    <div class="hp-progress">
+                        <div class="hp-fill" id="${charId}-hp-bar" style="width: ${(char.hp/char.maxHp)*100}%; background: linear-gradient(90deg, #e74c3c, #c0392b);">${char.hp}/${char.maxHp}</div>
+                    </div>
+                </div>
+
+                ${resourceHTML}
+
+                <div class="combat-controls">
+                    <div class="input-group">
+                        <input type="number" class="value-input" id="${charId}-damage-input" value="10" min="1">
+                        <button class="control-btn" onclick="takeDamage('${charId}')">-HP</button>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" class="value-input" id="${charId}-heal-input" value="10" min="1">
+                        <button class="control-btn heal" onclick="healCharacter('${charId}')">+HP</button>
+                    </div>
+                    ${resourceControls}
+                </div>
+            `;
+
+            return div;
+        }
+
+        function showSyncIndicator() {
+            const indicator = document.getElementById('syncIndicator');
+            indicator.style.display = 'block';
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 2000);
+        }
+
+        function resetGame() {
+            if (confirm('¿Estás seguro de que quieres reiniciar el juego? Se perderá todo el progreso actual.')) {
+                socket.emit('reset-game');
+            }
+        }
+
+        function addDMNarrative() {
+            const input = document.getElementById('dm-input');
+            const text = input.value.trim();
+            
+            if (text) {
+                addNarrative(`🎭 ${text}`, 'dm');
+                input.value = '';
+            }
+        }
+
+        document.getElementById('dm-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                addDMNarrative();
+            }
+        });
+
+        function rollDice(sides) {
+            const result = Math.floor(Math.random() * sides) + 1;
+            const resultDiv = document.getElementById('dice-result');
+            
+            resultDiv.classList.add('rolling');
+            resultDiv.innerHTML = '<div class="result-text">🎲</div>';
+            
+            socket.emit('dice-roll', { sides, result });
+            addNarrative(`🎲 Resultado del dado: ${result} (d${sides})`, 'dice');
+            
+            setTimeout(() => {
+                resultDiv.innerHTML = `
+                    <div class="result-text">${result}</div>
+                    <div class="result-detail">d${sides}</div>
+                `;
+                resultDiv.classList.remove('rolling');
+            }, 500);
+        }
+
+        function takeDamage(charId) {
+            const amount = parseInt(document.getElementById(`${charId}-damage-input`).value) || 10;
+            characters[charId].hp = Math.max(0, characters[charId].hp - amount);
+            socket.emit('update-character', { char: charId, characterData: characters[charId] });
+            addNarrative(`⚔️ ${characters[charId].name} recibió ${amount} de daño!`, 'action');
+            updateCharacterUI(charId);
+        }
+
+        function healCharacter(charId) {
+            const amount = parseInt(document.getElementById(`${charId}-heal-input`).value) || 10;
+            characters[charId].hp = Math.min(characters[charId].maxHp, characters[charId].hp + amount);
+            socket.emit('update-character', { char: charId, characterData: characters[charId] });
+            addNarrative(`💚 ${characters[charId].name} recuperó ${amount} HP!`, 'action');
+            updateCharacterUI(charId);
+        }
+
+        function modifyResource(charId, direction) {
+            const inputId = direction > 0 ? `${charId}-resource-plus-input` : `${charId}-resource-minus-input`;
+            const amount = parseInt(document.getElementById(inputId).value) || 1;
+            const actualAmount = amount * direction;
+            
+            characters[charId].resource = Math.max(0, Math.min(characters[charId].maxResource, characters[charId].resource + actualAmount));
+            socket.emit('update-character', { char: charId, characterData: characters[charId] });
+            
+            const action = direction > 0 ? 'recuperó' : 'usó';
+            const resourceName = {
+                'ki': 'Ki',
+                'mana': 'Maná',
+                'energy': 'Energía',
+                'rage': 'Furia',
+                'focus': 'Concentración'
+            }[characters[charId].resourceType];
+            
+            addNarrative(`${direction > 0 ? '⚡' : '🔥'} ${characters[charId].name} ${action} ${Math.abs(actualAmount)} punto(s) de ${resourceName}!`, 'action');
+            updateCharacterUI(charId);
+        }
+
+        function updateCharacterUI(charId) {
+            const char = characters[charId];
+            
+            // Update HP
+            const hpPercentage = (char.hp / char.maxHp) * 100;
+            const hpText = document.getElementById(`${charId}-hp-text`);
+            const hpBar = document.getElementById(`${charId}-hp-bar`);
+            
+            if (hpText && hpBar) {
+                hpText.textContent = `${char.hp}/${char.maxHp}`;
+                hpBar.style.width = `${hpPercentage}%`;
+                hpBar.textContent = `${char.hp}/${char.maxHp}`;
+            }
+
+            // Update Resource
+            if (char.resourceType !== 'none') {
+                const resourcePercentage = (char.resource / char.maxResource) * 100;
+                const resourceText = document.getElementById(`${charId}-resource-text`);
+                const resourceBar = document.getElementById(`${charId}-resource-bar`);
+                
+                if (resourceText && resourceBar) {
+                    resourceText.textContent = `${char.resource}/${char.maxResource}`;
+                    resourceBar.style.width = `${resourcePercentage}%`;
+                    resourceBar.textContent = `${char.resource}/${char.maxResource}`;
+                }
+            }
+        }
+
+        function addNarrative(text, type = 'dm') {
+            const narrativeData = {
+                type: type,
+                text: text,
+                timestamp: Date.now()
+            };
+
+            socket.emit('add-narrative', narrativeData);
+        }
+
+        function addNarrativeToDOM(entry) {
+            const log = document.getElementById('narrative-log');
+            const entryDiv = document.createElement('div');
+            entryDiv.className = `narrative-entry ${entry.type}`;
+            entryDiv.setAttribute('data-timestamp', entry.timestamp);
+            
+            let label = '🎭 Dungeon Master:';
+            if (entry.type === 'action') label = '⚔️ Acción:';
+            if (entry.type === 'dice') label = '🎲 Dado:';
+            
+            entryDiv.innerHTML = `
+                <div class="entry-label">${label}</div>
+                <div>${entry.text}</div>
+            `;
+            
+            log.appendChild(entryDiv);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Initialize
+        renderAllCharacters();
+    </script>
+</body>
+</html>

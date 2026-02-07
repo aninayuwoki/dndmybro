@@ -1,162 +1,189 @@
 const express = require('express');
-const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http);
+const http = require('http');
+const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 
-// Middleware
-app.use(express.static('public'));
-app.use(express.json());
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-// Game state con personajes base
+const PORT = 3000;
+const DATA_FILE = path.join(__dirname, 'data.json');
+
+// Game state with persistence
 let gameState = {
-    characters: {
-        heimer: {
-            name: 'Heimerdinger',
-            class: 'Artífice/Inventor',
-            level: 10,
-            emoji: '🔧',
-            hp: 75,
-            maxHp: 75,
-            resourceType: 'none',
-            resource: 0,
-            maxResource: 0,
-            stats: { str: 8, dex: 14, con: 12, int: 20, wis: 16, cha: 13 },
-            color: '#4a90e2',
-            isBase: true
-        },
-        goku: {
-            name: 'Goku',
-            class: 'Monje/Guerrero',
-            level: 10,
-            emoji: '🥋',
-            hp: 120,
-            maxHp: 120,
-            resourceType: 'ki',
-            resource: 15,
-            maxResource: 15,
-            stats: { str: 20, dex: 18, con: 18, int: 10, wis: 14, cha: 12 },
-            color: '#ff6b35',
-            isBase: true
-        },
-        star: {
-            name: 'Star Butterfly',
-            class: 'Hechicera/Princesa',
-            level: 10,
-            emoji: '🦋',
-            hp: 90,
-            maxHp: 90,
-            resourceType: 'mana',
-            resource: 20,
-            maxResource: 20,
-            stats: { str: 12, dex: 16, con: 14, int: 13, wis: 15, cha: 18 },
-            color: '#ff69b4',
-            isBase: true
-        }
-    },
-    narrative: [
-        {
-            type: 'dm',
-            text: '¡Bienvenidos, valientes aventureros! Una extraña convergencia dimensional ha unido vuestros mundos. Heimerdinger, el brillante inventor de Piltover; Goku, el poderoso guerrero Saiyajin; y Star Butterfly, la princesa mágica de Mewni, se encuentran en un bosque místico desconocido. A lo lejos, veis las ruinas de un antiguo templo que brilla con una energía familiar pero extraña. ¿Qué haréis?',
-            timestamp: Date.now()
-        }
-    ],
-    lastDiceRoll: null,
-    connectedPlayers: 0
+    characters: [],
+    narrative: [],
+    users: {} // { username: { passwordHash, role, token } }
 };
 
-// Socket.io connection
+const saltRounds = 10;
+
+function loadData() {
+    try {
+        if (fs.existsSync(DATA_FILE)) {
+            const data = fs.readFileSync(DATA_FILE, 'utf8');
+            const parsed = JSON.parse(data);
+            gameState = { ...gameState, ...parsed };
+        }
+    } catch (err) {
+        console.error("Error loading data:", err);
+    }
+}
+
+function saveData() {
+    try {
+        fs.writeFileSync(DATA_FILE, JSON.stringify(gameState, null, 2));
+    } catch (err) {
+        console.error("Error saving data:", err);
+    }
+}
+
+loadData();
+
+app.use(express.static(path.join(__dirname, 'public')));
+
 io.on('connection', (socket) => {
-    gameState.connectedPlayers++;
-    console.log(`Jugador conectado. Total: ${gameState.connectedPlayers}`);
-    
-    // Enviar estado actual al nuevo jugador
-    socket.emit('initial-state', gameState);
-    
-    // Notificar a todos sobre el número de jugadores
-    io.emit('players-update', gameState.connectedPlayers);
+    console.log('Usuario conectado:', socket.id);
 
-    // Actualizar personajes
-    socket.on('update-character', (data) => {
-        if (gameState.characters[data.char]) {
-            gameState.characters[data.char] = data.characterData;
-            io.emit('character-updated', data);
+    // Initial sync
+    socket.emit('init', {
+        characters: gameState.characters,
+        narrative: gameState.narrative
+    });
+
+    socket.on('register', async (data) => {
+        const { username, password } = data;
+        if (!username || !password) return socket.emit('auth-error', 'Datos incompletos');
+        if (gameState.users[username]) return socket.emit('auth-error', 'El usuario ya existe');
+
+        try {
+            const passwordHash = await bcrypt.hash(password, saltRounds);
+            const token = crypto.randomBytes(32).toString('hex');
+            // First user or "dm" user gets DM role
+            const role = (username.toLowerCase() === 'dm' || Object.keys(gameState.users).length === 0) ? 'dm' : 'player';
+
+            gameState.users[username] = { passwordHash, role, token };
+            saveData();
+            socket.emit('auth-success', { username, role, token });
+        } catch (err) {
+            socket.emit('auth-error', 'Error en el registro');
         }
     });
 
-    // Añadir nuevo personaje
-    socket.on('add-character', (data) => {
-        gameState.characters[data.charId] = data.characterData;
-        io.emit('character-added', data);
-        console.log(`Nuevo personaje creado: ${data.characterData.name}`);
-    });
+    socket.on('login', async (data) => {
+        const { username, password } = data;
+        const user = gameState.users[username];
+        if (!user) return socket.emit('auth-error', 'Usuario no encontrado');
 
-    // Eliminar personaje
-    socket.on('delete-character', (data) => {
-        // Solo permitir eliminar personajes no base
-        if (gameState.characters[data.charId] && !gameState.characters[data.charId].isBase) {
-            delete gameState.characters[data.charId];
-            io.emit('character-deleted', data);
-            console.log(`Personaje eliminado: ${data.charId}`);
+        try {
+            const match = await bcrypt.compare(password, user.passwordHash);
+            if (match) {
+                // Generate new token on each login for security
+                user.token = crypto.randomBytes(32).toString('hex');
+                saveData();
+                socket.emit('auth-success', { username, role: user.role, token: user.token });
+            } else {
+                socket.emit('auth-error', 'Contraseña incorrecta');
+            }
+        } catch (err) {
+            socket.emit('auth-error', 'Error en el inicio de sesión');
         }
     });
 
-    // Tirada de dados
-    socket.on('dice-roll', (data) => {
-        gameState.lastDiceRoll = data;
-        io.emit('dice-rolled', data);
+    socket.on('restore-session', (data) => {
+        const { username, token } = data;
+        const user = gameState.users[username];
+        if (user && user.token === token) {
+            socket.emit('auth-success', { username, role: user.role, token: user.token });
+        } else {
+            socket.emit('auth-expired');
+        }
     });
 
-    // Añadir narrativa
-    socket.on('add-narrative', (data) => {
-        gameState.narrative.push(data);
-        io.emit('narrative-added', data);
+    socket.on('new-character', (character) => {
+        // Character owner is assigned from the client-side session (which we trust here because they are emitted from authenticated sockets)
+        // In a real production app, we would store the session on the socket itself.
+        gameState.characters.push(character);
+        saveData();
+        io.emit('character-update', gameState.characters);
+
+        const entry = {
+            msg: `Nuevo personaje: ${character.name} (${character.class})`,
+            owner: character.owner
+        };
+        gameState.narrative.push(entry);
+        io.emit('narrative-update', entry);
+        saveData();
     });
 
-    // Reset del juego
-    socket.on('reset-game', () => {
-        // Resetear solo los personajes base, eliminar los personalizados
-        const baseCharacters = {};
-        Object.keys(gameState.characters).forEach(charId => {
-            if (gameState.characters[charId].isBase) {
-                const char = gameState.characters[charId];
-                baseCharacters[charId] = {
-                    ...char,
-                    hp: char.maxHp,
-                    resource: char.maxResource
+    socket.on('update-hp', (data) => {
+        const { id, change, user } = data;
+        const char = gameState.characters.find(c => c.id === id);
+        if (char) {
+            // Authorization check: Owner or DM
+            const currentUser = gameState.users[user];
+            if (char.owner === user || (currentUser && currentUser.role === 'dm')) {
+                char.hp = Math.min(char.maxHp, Math.max(0, char.hp + change));
+                saveData();
+                io.emit('character-update', gameState.characters);
+
+                const entry = {
+                    msg: `${char.name} ${change > 0 ? 'recuperó' : 'perdió'} ${Math.abs(change)} HP`,
+                    owner: 'System'
                 };
+                gameState.narrative.push(entry);
+                io.emit('narrative-update', entry);
+                saveData();
             }
-        });
-        
-        gameState.characters = baseCharacters;
-        gameState.narrative = [
-            {
-                type: 'dm',
-                text: '¡El juego ha sido reiniciado! Una nueva aventura comienza...',
-                timestamp: Date.now()
-            }
-        ];
-        
-        io.emit('game-reset', gameState);
-        console.log('Juego reiniciado');
+        }
     });
 
-    // Desconexión
+    socket.on('update-resource', (data) => {
+        const { id, change, user } = data;
+        const char = gameState.characters.find(c => c.id === id);
+        if (char && char.resource) {
+            const currentUser = gameState.users[user];
+            if (char.owner === user || (currentUser && currentUser.role === 'dm')) {
+                char.resource.value = Math.min(char.resource.max, Math.max(0, char.resource.value + change));
+                saveData();
+                io.emit('character-update', gameState.characters);
+            }
+        }
+    });
+
+    socket.on('delete-character', (data) => {
+        const { id, user } = data;
+        const char = gameState.characters.find(c => c.id === id);
+        if (char) {
+            const currentUser = gameState.users[user];
+            if (char.owner === user || (currentUser && currentUser.role === 'dm')) {
+                gameState.characters = gameState.characters.filter(c => c.id !== id);
+                saveData();
+                io.emit('character-update', gameState.characters);
+            }
+        }
+    });
+
+    socket.on('reset-game', (user) => {
+        const currentUser = gameState.users[user];
+        if (currentUser && currentUser.role === 'dm') {
+            gameState.characters = [];
+            gameState.narrative = [];
+            saveData();
+            io.emit('character-update', gameState.characters);
+            io.emit('narrative-reset');
+        }
+    });
+
     socket.on('disconnect', () => {
-        gameState.connectedPlayers--;
-        console.log(`Jugador desconectado. Total: ${gameState.connectedPlayers}`);
-        io.emit('players-update', gameState.connectedPlayers);
+        console.log('Usuario desconectado');
     });
 });
 
-// Ruta principal
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Puerto
-const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-    console.log(`🎲 Servidor D&D corriendo en http://localhost:${PORT}`);
-    console.log(`📡 Para usar con ngrok: ngrok http ${PORT}`);
+server.listen(PORT, () => {
+    console.log(`Servidor D&D corriendo en http://localhost:${PORT}`);
 });

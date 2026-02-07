@@ -13,10 +13,57 @@ const io = new Server(server);
 const PORT = 3000;
 const DATA_FILE = path.join(__dirname, 'data.json');
 
+// Base characters from original version
+const baseCharacters = [
+    {
+        id: 'heimer',
+        name: 'Heimerdinger',
+        class: 'Artífice/Inventor',
+        race: 'Gnomo',
+        level: 10,
+        color: '#4a90e2',
+        hp: 75,
+        maxHp: 75,
+        owner: 'dm',
+        stats: { str: 8, dex: 14, con: 12, int: 20, wis: 16, cha: 13 }
+    },
+    {
+        id: 'goku',
+        name: 'Goku',
+        class: 'Monje/Guerrero',
+        race: 'Saiyajin',
+        level: 10,
+        color: '#ff6b35',
+        hp: 120,
+        maxHp: 120,
+        owner: 'dm',
+        stats: { str: 20, dex: 18, con: 18, int: 10, wis: 14, cha: 12 },
+        resource: { type: 'Ki', value: 15, max: 15, color: '#00d2ff' }
+    },
+    {
+        id: 'star',
+        name: 'Star Butterfly',
+        class: 'Hechicera/Princesa',
+        race: 'Mewmana',
+        level: 10,
+        color: '#ff69b4',
+        hp: 90,
+        maxHp: 90,
+        owner: 'dm',
+        stats: { str: 12, dex: 16, con: 14, int: 13, wis: 15, cha: 18 },
+        resource: { type: 'Mana', value: 20, max: 20, color: '#3498db' }
+    }
+];
+
 // Game state with persistence
 let gameState = {
-    characters: [],
-    narrative: [],
+    characters: [...baseCharacters],
+    narrative: [
+        {
+            msg: "¡Bienvenidos, valientes aventureros! Una extraña convergencia dimensional ha unido vuestros mundos.",
+            owner: "System"
+        }
+    ],
     users: {} // { username: { passwordHash, role, token } }
 };
 
@@ -28,6 +75,13 @@ function loadData() {
             const data = fs.readFileSync(DATA_FILE, 'utf8');
             const parsed = JSON.parse(data);
             gameState = { ...gameState, ...parsed };
+
+            // Ensure base characters exist if migration happened
+            baseCharacters.forEach(bc => {
+                if (!gameState.characters.find(c => c.id === bc.id)) {
+                    gameState.characters.push(bc);
+                }
+            });
         }
     } catch (err) {
         console.error("Error loading data:", err);
@@ -82,7 +136,6 @@ io.on('connection', (socket) => {
         try {
             const match = await bcrypt.compare(password, user.passwordHash);
             if (match) {
-                // Generate new token on each login for security
                 user.token = crypto.randomBytes(32).toString('hex');
                 saveData();
                 socket.emit('auth-success', { username, role: user.role, token: user.token });
@@ -105,8 +158,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('new-character', (character) => {
-        // Character owner is assigned from the client-side session (which we trust here because they are emitted from authenticated sockets)
-        // In a real production app, we would store the session on the socket itself.
         gameState.characters.push(character);
         saveData();
         io.emit('character-update', gameState.characters);
@@ -124,7 +175,6 @@ io.on('connection', (socket) => {
         const { id, change, user } = data;
         const char = gameState.characters.find(c => c.id === id);
         if (char) {
-            // Authorization check: Owner or DM
             const currentUser = gameState.users[user];
             if (char.owner === user || (currentUser && currentUser.role === 'dm')) {
                 char.hp = Math.min(char.maxHp, Math.max(0, char.hp + change));
@@ -171,7 +221,7 @@ io.on('connection', (socket) => {
     socket.on('reset-game', (user) => {
         const currentUser = gameState.users[user];
         if (currentUser && currentUser.role === 'dm') {
-            gameState.characters = [];
+            gameState.characters = [...baseCharacters];
             gameState.narrative = [];
             saveData();
             io.emit('character-update', gameState.characters);
